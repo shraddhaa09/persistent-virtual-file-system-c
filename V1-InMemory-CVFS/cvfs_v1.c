@@ -733,8 +733,9 @@ int write_file(
             return ERR_FILE_NOT_EXIST;
         }
 
-        //if writting permission is not there 
-        if(uareaobj.UFDT[fd]->ptrinode->Permission<WRITE){
+        // Filter for WRITE permission
+        if((uareaobj.UFDT[fd]->ptrinode->Permission & WRITE) == 0)
+        {
             return ERR_PERMISSION_DENIED;
         }
 
@@ -790,8 +791,9 @@ int read_file(
             return ERR_FILE_NOT_EXIST;
         }
 
-        //Filter for the permission 
-        if(uareaobj.UFDT[fd]->ptrinode->Permission<READ){
+        // Filter for READ permission
+        if((uareaobj.UFDT[fd]->ptrinode->Permission & READ) == 0)
+        {
             return ERR_PERMISSION_DENIED;
         }
 
