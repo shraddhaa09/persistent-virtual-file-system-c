@@ -218,6 +218,14 @@ void CreateDILB()
     for(i = 1; i <= MAXINODE; i++)
     {
         newn = (PINODE)malloc(sizeof(INODE));
+        newn = (PINODE)malloc(sizeof(INODE));
+
+        // If malloc() fails:causes a segmentation fault by newn->InodeNumber
+        if(newn == NULL)
+        {
+            printf("Unable to allocate memory for inode\n");
+            return;
+        }
 
         newn->InodeNumber = i;
         strcpy(newn->FileName, "\0");
@@ -498,9 +506,17 @@ int CreateFile(
 
     uareaobj.UFDT[i]->ptrinode->Permission = permission;
 
-    // Allocate memory for fies data (Data Block)
+    // Allocate memory for files data (Data Block)
 
     uareaobj.UFDT[i]->ptrinode->Buffer = (char *)malloc(MAXFILESIZE);
+
+    if(uareaobj.UFDT[i]->ptrinode->Buffer == NULL)
+    {
+        free(uareaobj.UFDT[i]);
+        uareaobj.UFDT[i] = NULL;
+
+        return ERR_INSUFFICIENT_SPACE;
+    }
 
     superobj.FreeInodes--;
    
@@ -806,44 +822,105 @@ int read_file(
 
 int main()
 {
-    //input command
+    // Input command
     char str[80] = {'\0'};
 
-    //tokenized command
-    char Command[5] [20] = {{'\0'}};
+    // Tokenized command
+    char Command[5][20] = {{'\0'}};
 
-    //data for write system call
-    char InputBuffer[MAXFILESIZE]={'\0'};
+    // Data for write system call
+    char InputBuffer[MAXFILESIZE] = {'\0'};
 
-    int size=0;
+    // Buffer used to store data read from file
+    char *EmptyBuffer = NULL;
 
-    int iRet = 0, iCount = 0;
+    int size = 0;
+    int iRet = 0;
+    int iCount = 0;
 
-    char *EmptyBuffer=0;
+    //////////////////////////////////////////////////////////
+    //
+    // Start CVFS initialisation
+    //
+    //////////////////////////////////////////////////////////
 
     StartAuxiliaryDataInitialisation();
 
     printf("---------------------------------------------------\n");
     printf("------ Marvellous CVFS started successfully ------\n");
     printf("---------------------------------------------------\n");
-    
+
+
+    //////////////////////////////////////////////////////////
+    //
     // Infinite Listening Shell
+    //
+    //////////////////////////////////////////////////////////
+
     while(1)
     {
-        fflush(stdin);
+        //////////////////////////////////////////////////////
+        // Reset input buffers
+        //////////////////////////////////////////////////////
 
-        strcpy(str, "");
+        memset(str, '\0', sizeof(str));
+        memset(Command, '\0', sizeof(Command));
 
         printf("\nMarvellous CVFS : > ");
-        fgets(str,sizeof(str), stdin);
 
-        iCount = sscanf(str, "%s %s %s %s %s", Command[0], Command[1], Command[2], Command[3], Command[4]);
+        //////////////////////////////////////////////////////
+        // Read complete command
+        //////////////////////////////////////////////////////
 
-        fflush(stdin);
+        if(fgets(str, sizeof(str), stdin) == NULL)
+        {
+            printf("\nInput error or EOF detected\n");
+            break;
+        }
+
+        //////////////////////////////////////////////////////
+        // Tokenize command
+        //////////////////////////////////////////////////////
+
+        iCount = sscanf(
+                    str,
+                    "%19s %19s %19s %19s %19s",
+                    Command[0],
+                    Command[1],
+                    Command[2],
+                    Command[3],
+                    Command[4]
+                );
+
+
+        //////////////////////////////////////////////////////
+        // No valid command
+        //////////////////////////////////////////////////////
+
+        if(iCount <= 0)
+        {
+            continue;
+        }
+
+
+        //////////////////////////////////////////////////////
+        //
+        // COMMAND WITH ONE ARGUMENT
+        //
+        // Examples:
+        // help
+        // ls
+        // clear
+        // exit
+        //
+        //////////////////////////////////////////////////////
 
         if(iCount == 1)
         {
-            // Marvellous CVFS : > exit
+            ////////////////////////////////////////////////////
+            // exit
+            ////////////////////////////////////////////////////
+
             if(strcmp(Command[0], "exit") == 0)
             {
                 printf("Thank you for using Marvellous CVFS\n");
@@ -852,93 +929,188 @@ int main()
                 break;
             }
 
-            // Marvellous CVFS : > help
+
+            ////////////////////////////////////////////////////
+            // help
+            ////////////////////////////////////////////////////
+
             else if(strcmp(Command[0], "help") == 0)
             {
                 DisplayHelp();
             }
 
-            // Marvellous CVFS : > clear
+
+            ////////////////////////////////////////////////////
+            // clear
+            ////////////////////////////////////////////////////
+
             else if(strcmp(Command[0], "clear") == 0)
             {
                 #ifdef _WIN32
-                system("cls");
+
+                    system("cls");
 
                 #else
-                system("clear");
+
+                    system("clear");
 
                 #endif
             }
 
-            // Marvellous CVFS : > ls
+
+            ////////////////////////////////////////////////////
+            // ls
+            ////////////////////////////////////////////////////
+
             else if(strcmp(Command[0], "ls") == 0)
             {
                 LsFile();
             }
+
+
+            ////////////////////////////////////////////////////
+            // Unknown command
+            ////////////////////////////////////////////////////
+
             else
             {
                 printf("Command not found\n");
                 printf("Please refer help option to get more information\n");
                 printf("Please refer manual page of command using man\n");
             }
-
         }
+
+
+        //////////////////////////////////////////////////////
+        //
+        // COMMAND WITH TWO ARGUMENTS
+        //
+        // Examples:
+        // man creat
+        // ls a
+        // stat abc.txt
+        // unlink abc.txt
+        // write 3
+        //
+        //////////////////////////////////////////////////////
+
         else if(iCount == 2)
         {
-            // Marvellous CVFS : > man open
+            ////////////////////////////////////////////////////
+            // man command
+            ////////////////////////////////////////////////////
+
             if(strcmp(Command[0], "man") == 0)
             {
                 ManPageDisplay(Command[1]);
             }
-            // Marvellous CVFS : > ls -a
-            else if((strcmp(Command[0], "ls") == 0) && (strcmp(Command[1], "a")==0))
+
+
+            ////////////////////////////////////////////////////
+            // ls a
+            ////////////////////////////////////////////////////
+
+            else if(
+                    strcmp(Command[0], "ls") == 0 &&
+                    strcmp(Command[1], "a") == 0
+                   )
             {
                 LsFile_All();
             }
-            // Marvellous CVFS : > stat Ganesh.txt
+
+
+            ////////////////////////////////////////////////////
+            // stat filename
+            ////////////////////////////////////////////////////
+
             else if(strcmp(Command[0], "stat") == 0)
             {
-                iRet=stat_file(Command[1]);
-                if(iRet==ERR_FILE_NOT_EXIST){
-                    printf("Error:File not exist");
-                }
-            }
-            // Marvellous CVFS : > unlink Ganesh.txt
-            else if(strcmp(Command[0], "unlink") == 0)
-            {
-                iRet=unlink_file(Command[1]);
-                if(iRet==ERR_FILE_NOT_EXIST){
-                    printf("Error:File not exist");
+                iRet = stat_file(Command[1]);
+
+                if(iRet == ERR_FILE_NOT_EXIST)
+                {
+                    printf("Error : File does not exist\n");
                 }
             }
 
-            // Marvellous CVFS : > write 1
+
+            ////////////////////////////////////////////////////
+            // unlink filename
+            ////////////////////////////////////////////////////
+
+            else if(strcmp(Command[0], "unlink") == 0)
+            {
+                iRet = unlink_file(Command[1]);
+
+                if(iRet == ERR_FILE_NOT_EXIST)
+                {
+                    printf("Error : File does not exist\n");
+                }
+            }
+
+
+            ////////////////////////////////////////////////////
+            // write FD
+            ////////////////////////////////////////////////////
+
             else if(strcmp(Command[0], "write") == 0)
             {
                 printf("Enter the data that you want to write into the file\n");
-                fgets(InputBuffer,MAXFILESIZE,stdin);
-                size=strlen(InputBuffer);
-                iRet=write_file(atoi(Command[1]),InputBuffer,size);
 
-                if(iRet==ERR_INVALID_PARAMETER){
-                    printf("Error :Invalid parameter\n");
-                    printf("Please check the man page");
-                }
-                else if(iRet==ERR_FILE_NOT_EXIST){
-                    printf("Error:File not exist");
-                }
-                else if(iRet==ERR_PERMISSION_DENIED){
-                    printf("Error:There is no permission to write the data ");
-                }
-                else if(iRet==ERR_INSUFFICIENT_SPACE){
-                    printf("Error:There is space to write the data ");
-                }
-                else{
-                    printf("%d bytes gets succesfully writtten into the file\n",iRet);
+                if(fgets(InputBuffer, MAXFILESIZE, stdin) == NULL)
+                {
+                    printf("Error : Unable to read input data\n");
+                    continue;
                 }
 
+                size = strlen(InputBuffer);
 
+                iRet = write_file(
+                            atoi(Command[1]),
+                            InputBuffer,
+                            size
+                        );
+
+
+                //////////////////////////////////////////////////
+                // Handle write errors
+                //////////////////////////////////////////////////
+
+                if(iRet == ERR_INVALID_PARAMETER)
+                {
+                    printf("Error : Invalid parameter\n");
+                    printf("Please check the man page\n");
+                }
+
+                else if(iRet == ERR_FILE_NOT_EXIST)
+                {
+                    printf("Error : File does not exist\n");
+                }
+
+                else if(iRet == ERR_PERMISSION_DENIED)
+                {
+                    printf("Error : There is no permission to write the data\n");
+                }
+
+                else if(iRet == ERR_INSUFFICIENT_SPACE)
+                {
+                    printf("Error : Insufficient space in file\n");
+                }
+
+                else
+                {
+                    printf(
+                        "%d bytes successfully written into the file\n",
+                        iRet
+                    );
+                }
             }
+
+
+            ////////////////////////////////////////////////////
+            // Unknown command
+            ////////////////////////////////////////////////////
+
             else
             {
                 printf("Command not found\n");
@@ -946,66 +1118,174 @@ int main()
                 printf("Please refer manual page of command using man\n");
             }
         }
+
+
+        //////////////////////////////////////////////////////
+        //
+        // COMMAND WITH THREE ARGUMENTS
+        //
+        // Examples:
+        //
+        // creat abc.txt 3
+        // read 3 10
+        //
+        //////////////////////////////////////////////////////
+
         else if(iCount == 3)
         {
-            // Marvellous CVFS : > creat Ganesh.txt 3
+            ////////////////////////////////////////////////////
+            // creat filename permission
+            ////////////////////////////////////////////////////
+
             if(strcmp(Command[0], "creat") == 0)
             {
-                iRet = CreateFile(Command[1], atoi(Command[2]));    
-                
+                iRet = CreateFile(
+                            Command[1],
+                            atoi(Command[2])
+                        );
+
+
+                //////////////////////////////////////////////////
+                // Handle CreateFile errors
+                //////////////////////////////////////////////////
+
                 if(iRet == ERR_NO_INODES)
                 {
                     printf("Error : Unable to create new file\n");
                     printf("Because there is no free inode\n");
                 }
+
                 else if(iRet == ERR_INVALID_PARAMETER)
                 {
                     printf("Error : Unable to create new file\n");
                     printf("Because parameters of command are invalid\n");
                     printf("Please use man page to get actual parameters\n");
                 }
+
                 else if(iRet == ERR_FILE_ALREADY_EXIST)
                 {
                     printf("Error : Unable to create new file\n");
                     printf("Because the file name is already present\n");
                     printf("Please use ls command to check names of all files\n");
                 }
+
                 else if(iRet == ERR_MAX_FILES_OPEN)
                 {
                     printf("Error : Unable to create new file\n");
                     printf("Because the UFDT is full\n");
                     printf("Please close some opened file\n");
                 }
-                else
+
+                else if(iRet == ERR_INSUFFICIENT_SPACE)
                 {
-                    printf("Files successfully created with FD : %d\n", iRet);
-                }
-            }
-            // Marvellous CVFS : > read 3 10
-            else if(strcmp(Command[0], "read") == 0)
-            {
-                EmptyBuffer=(char *)malloc(atoi(Command[2]));
-                iRet=read_file(atoi(Command[1]),EmptyBuffer,atoi(Command[2]));
-                if(iRet==ERR_INVALID_PARAMETER){
-                    printf("Error :Invalid parameters\n");
-                }
-                else if(iRet==ERR_FILE_NOT_EXIST){
-                    printf("ERR :File not exist\n");
-                }
-                else if (iRet==ERR_INSUFFICIENT_DATA)
-                {
-                    printf("ERR :INSUFFICIENT DATA\n");
-                }
-                else if (iRet==ERR_PERMISSION_DENIED)
-                {
-                    printf("ERR :PERMISSION DENIED\n");
-                }
-                else{
-                    printf("Read operation is sussecfully\n");
+                    printf("Error : Unable to create new file\n");
+                    printf("Because memory allocation failed\n");
                 }
 
-                
+                else
+                {
+                    printf(
+                        "Files successfully created with FD : %d\n",
+                        iRet
+                    );
+                }
             }
+
+
+            ////////////////////////////////////////////////////
+            // read FD size
+            ////////////////////////////////////////////////////
+
+            else if(strcmp(Command[0], "read") == 0)
+            {
+                size = atoi(Command[2]);
+
+
+                //////////////////////////////////////////////////
+                // Validate requested size before malloc
+                //////////////////////////////////////////////////
+
+                if(size <= 0)
+                {
+                    printf("Error : Invalid read size\n");
+                    continue;
+                }
+
+
+                //////////////////////////////////////////////////
+                // Allocate one extra byte for '\0'
+                //////////////////////////////////////////////////
+
+                EmptyBuffer = (char *)malloc(size + 1);
+
+                if(EmptyBuffer == NULL)
+                {
+                    printf("Error : Memory allocation failed\n");
+                    continue;
+                }
+
+
+                //////////////////////////////////////////////////
+                // Read data from CVFS
+                //////////////////////////////////////////////////
+
+                iRet = read_file(
+                            atoi(Command[1]),
+                            EmptyBuffer,
+                            size
+                        );
+
+
+                //////////////////////////////////////////////////
+                // Handle read errors
+                //////////////////////////////////////////////////
+
+                if(iRet == ERR_INVALID_PARAMETER)
+                {
+                    printf("Error : Invalid parameters\n");
+                }
+
+                else if(iRet == ERR_FILE_NOT_EXIST)
+                {
+                    printf("Error : File does not exist\n");
+                }
+
+                else if(iRet == ERR_INSUFFICIENT_DATA)
+                {
+                    printf("Error : Insufficient data\n");
+                }
+
+                else if(iRet == ERR_PERMISSION_DENIED)
+                {
+                    printf("Error : Permission denied\n");
+                }
+
+                else
+                {
+                    //////////////////////////////////////////////////
+                    // Null terminate the data
+                    //////////////////////////////////////////////////
+
+                    EmptyBuffer[iRet] = '\0';
+
+                    printf("Read operation successful\n");
+                    printf("Data read from file : %s\n", EmptyBuffer);
+                    printf("Bytes read : %d\n", iRet);
+                }
+
+
+                //////////////////////////////////////////////////
+                // Free dynamically allocated read buffer
+                //////////////////////////////////////////////////
+
+                free(EmptyBuffer);
+                EmptyBuffer = NULL;
+            }
+
+
+            ////////////////////////////////////////////////////
+            // Unknown command
+            ////////////////////////////////////////////////////
 
             else
             {
@@ -1014,10 +1294,29 @@ int main()
                 printf("Please refer manual page of command using man\n");
             }
         }
+
+
+        //////////////////////////////////////////////////////
+        //
+        // FOUR ARGUMENTS
+        //
+        // Currently not supported in V1
+        //
+        //////////////////////////////////////////////////////
+
         else if(iCount == 4)
         {
-
+            printf("Command not supported in V1\n");
+            printf("Please refer help option to get more information\n");
         }
+
+
+        //////////////////////////////////////////////////////
+        //
+        // More than four arguments
+        //
+        //////////////////////////////////////////////////////
+
         else
         {
             printf("Command not found\n");
@@ -1026,7 +1325,14 @@ int main()
         }
 
     } // End of while
-    
+
+
+    //////////////////////////////////////////////////////////
+    //
+    // Program termination
+    //
+    //////////////////////////////////////////////////////////
+
     return 0;
 
 } // End of main
