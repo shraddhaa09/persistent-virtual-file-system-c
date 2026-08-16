@@ -304,6 +304,7 @@ void DisplayHelp()
     printf("stat : It is used to display statistical information of file\n");
     printf("unlink : It is used to delete the file\n");
     printf("lseek : It is used to change the current file offset\n");
+    printf("truncate : It is used to reduce the size of an existing file\n");
     printf("exit : It is used to terminate Marvellous CVFS\n");
 
     printf("---------------------------------------------------\n");
@@ -386,6 +387,12 @@ void ManPageDisplay(char Name[])
         printf("whence : START -> 0\n");
         printf("whence : CURRENT -> 1\n");
         printf("whence : END -> 2\n");
+    }
+    else if(strcmp(Name, "truncate") == 0)
+    {
+        printf("About : It is used to reduce the size of an existing file\n");
+        printf("Usage : truncate file_name size\n");
+        printf("Size : New size of the file\n");
     }
     else
     {
@@ -742,6 +749,89 @@ int LseekFile(
     uareaobj.UFDT[fd]->WriteOffset = newOffset;
 
     return newOffset;
+}
+//////////////////////////////////////////////////////////////////////
+//
+//  Function Name:      TruncateFile
+//  Description:        It is used to truncate an existing file
+//  Input :             File name and new size
+//  Output :            Success / Error code
+//
+//////////////////////////////////////////////////////////////////////
+
+int TruncateFile(
+                    char name[],
+                    int size
+                )
+{
+    PINODE temp = NULL;
+    int i = 0;
+
+    // Validate size
+    if(size < 0)
+    {
+        return ERR_INVALID_PARAMETER;
+    }
+
+    // Check whether file exists
+    if(IsFileExist(name) == false)
+    {
+        return ERR_FILE_NOT_EXIST;
+    }
+
+    // Find inode
+    temp = head;
+
+    while(temp != NULL)
+    {
+        if(strcmp(temp->FileName, name) == 0)
+        {
+            break;
+        }
+
+        temp = temp->next;
+    }
+
+    if(temp == NULL)
+    {
+        return ERR_FILE_NOT_EXIST;
+    }
+
+    // New size cannot exceed file capacity
+    if(size > temp->FileSize)
+    {
+        return ERR_INSUFFICIENT_SPACE;
+    }
+
+    // Cannot increase file size using truncate
+    if(size > temp->ActualFileSize)
+    {
+        return ERR_INVALID_PARAMETER;
+    }
+
+    // Update actual file size:update all currently open FileTables referring to this inode.
+    temp->ActualFileSize = size;
+
+    for(i = 0; i < MAXOPENFILES; i++)
+    {
+        if(uareaobj.UFDT[i] != NULL)
+        {
+            if(uareaobj.UFDT[i]->ptrinode == temp)
+            {
+                if(uareaobj.UFDT[i]->ReadOffset > size)
+                {
+                    uareaobj.UFDT[i]->ReadOffset = size;
+                }
+
+                if(uareaobj.UFDT[i]->WriteOffset > size)
+                {
+                    uareaobj.UFDT[i]->WriteOffset = size;
+                }
+            }
+        }
+    }
+
+    return EXECUTE_SUCCESS;
 }
 
 ////////////////////////////////////////////////////////////////////
@@ -1479,6 +1569,30 @@ int main()
                 );
             }
         }
+        else if(strcmp(Command[0], "truncate") == 0)
+            {
+                iRet = TruncateFile(
+                            Command[1],
+                            atoi(Command[2])
+                        );
+
+                if(iRet == ERR_INVALID_PARAMETER)
+                {
+                    printf("Error : Invalid truncate size\n");
+                }
+                else if(iRet == ERR_FILE_NOT_EXIST)
+                {
+                    printf("Error : File does not exist\n");
+                }
+                else if(iRet == ERR_INSUFFICIENT_SPACE)
+                {
+                    printf("Error : Size exceeds file capacity\n");
+                }
+                else
+                {
+                    printf("File successfully truncated\n");
+                }
+            }
             ////////////////////////////////////////////////////
             // read FD size
             ////////////////////////////////////////////////////
