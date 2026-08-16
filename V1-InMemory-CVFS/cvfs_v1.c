@@ -297,8 +297,8 @@ void DisplayHelp()
     printf("man : It is used to display the manual page\n");
     printf("clear : It is used to clear the terminal screen\n");
     printf("creat : It is used to create new regular file\n ");
-    printf("open : It is used to open regular file\n");
-    printf("close : It is used to close regular file\n");
+    printf("open : It is used to open existing regular file\n");
+    printf("close : It is used to close an opened file\n");
     printf("write : It is used to write the data into the file\n");
     printf("read : It is used to read data from the file\n");
     printf("stat : It is used to display statistical information of file\n");
@@ -350,12 +350,26 @@ void ManPageDisplay(char Name[])
         printf("permission : write->2\n");
         printf("permission : read+write->3\n");
     }
+    else if(strcmp(Name, "open") == 0)
+    {
+        printf("About : It is used to open an existing file\n");
+        printf("Usage : open file_name mode\n");
+        printf("Mode : read -> 1\n");
+        printf("Mode : write -> 2\n");
+        printf("Mode : read+write -> 3\n");
+    }
     else if(strcmp(Name, "unlink") == 0)
     {
         printf("About : It is used to delete existing file\n");
         printf("Usage : unlink file_name \n");
 
         printf("File_name: Nmae of file that we want to delete\n");
+    }
+    else if(strcmp(Name, "close") == 0)
+    {
+        printf("About : It is used to close an opened file\n");
+        printf("Usage : close FD\n");
+        printf("FD : File descriptor of opened file\n");
     }
     else if(strcmp(Name, "stat") == 0)
     {
@@ -521,6 +535,134 @@ int CreateFile(
     superobj.FreeInodes--;
    
     return i;
+}
+//////////////////////////////////////////////////////////////////////
+//
+//  Function Name:      OpenFile
+//  Description:        It is used to open an existing file
+//  Input :             Name of file & Mode
+//  Output :            File Descriptor
+//
+//////////////////////////////////////////////////////////////////////
+
+int OpenFile(
+                char name[],        // Name of file
+                int mode            // Opening mode
+            )
+{
+    int i = 0;
+    PINODE temp = NULL;
+
+    // Validate mode
+    if(mode < READ || mode > (READ + WRITE))
+    {
+        return ERR_INVALID_PARAMETER;
+    }
+
+    // Check whether file exists
+    if(IsFileExist(name) == false)
+    {
+        return ERR_FILE_NOT_EXIST;
+    }
+
+    // Find inode of the file
+    temp = head;
+
+    while(temp != NULL)
+    {
+        if(strcmp(temp->FileName, name) == 0)
+        {
+            break;
+        }
+
+        temp = temp->next;
+    }
+
+    if(temp == NULL)
+    {
+        return ERR_FILE_NOT_EXIST;
+    }
+
+    // Check whether requested mode is allowed
+    if((mode & temp->Permission) != mode)
+    {
+        return ERR_PERMISSION_DENIED;
+    }
+
+    // Find free UFDT entry
+    for(i = 3; i < MAXOPENFILES; i++)
+    {
+        if(uareaobj.UFDT[i] == NULL)
+        {
+            break;
+        }
+    }
+
+    // No free file descriptor
+    if(i == MAXOPENFILES)
+    {
+        return ERR_MAX_FILES_OPEN;
+    }
+
+    // Allocate FileTable
+    uareaobj.UFDT[i] = (PFILETABLE)malloc(sizeof(FILETABLE));
+
+    if(uareaobj.UFDT[i] == NULL)
+    {
+        return ERR_INSUFFICIENT_SPACE;
+    }
+
+    // Initialize FileTable
+    uareaobj.UFDT[i]->ReadOffset = 0;
+    uareaobj.UFDT[i]->WriteOffset = 0;
+    uareaobj.UFDT[i]->Mode = mode;
+
+    // Connect FileTable with inode
+    uareaobj.UFDT[i]->ptrinode = temp;
+
+    // Increment reference count
+    temp->ReferenceCount++;
+
+    return i;
+}
+//////////////////////////////////////////////////////////////////////
+//
+//  Function Name:      CloseFile
+//  Description:        It is used to close an opened file
+//  Input :             File Descriptor
+//  Output :            Success / Error code
+//
+//////////////////////////////////////////////////////////////////////
+
+int CloseFile(int fd)
+{
+    PINODE temp = NULL;
+
+    // Validate FD
+    if(fd < 0 || fd >= MAXOPENFILES)
+    {
+        return ERR_INVALID_PARAMETER;
+    }
+
+    // Check whether FD is actually open
+    if(uareaobj.UFDT[fd] == NULL)
+    {
+        return ERR_FILE_NOT_EXIST;
+    }
+
+    // Get inode connected to this FileTable
+    temp = uareaobj.UFDT[fd]->ptrinode;
+
+    // Decrement reference count
+    temp->ReferenceCount--;
+
+    // Release FileTable
+    free(uareaobj.UFDT[fd]);
+
+    // Remove FileTable reference from UFDT
+    uareaobj.UFDT[fd] = NULL;
+
+    return EXECUTE_SUCCESS;
 }
 
 ////////////////////////////////////////////////////////////////////
@@ -1049,6 +1191,27 @@ int main()
                     printf("Error : File does not exist\n");
                 }
             }
+            ////////////////////////////////////////////////////
+            // close FD
+            ////////////////////////////////////////////////////
+
+            else if(strcmp(Command[0], "close") == 0)
+            {
+                iRet = CloseFile(atoi(Command[1]));
+
+                if(iRet == ERR_INVALID_PARAMETER)
+                {
+                    printf("Error : Invalid file descriptor\n");
+                }
+                else if(iRet == ERR_FILE_NOT_EXIST)
+                {
+                    printf("Error : File is not open\n");
+                }
+                else
+                {
+                    printf("File closed successfully\n");
+                }
+            }
 
 
             ////////////////////////////////////////////////////
@@ -1134,66 +1297,109 @@ int main()
         //////////////////////////////////////////////////////
 
         else if(iCount == 3)
+{
+    ////////////////////////////////////////////////////
+    // creat filename permission
+    ////////////////////////////////////////////////////
+
+    if(strcmp(Command[0], "creat") == 0)
+    {
+        iRet = CreateFile(
+                    Command[1],
+                    atoi(Command[2])
+                );
+
+        //////////////////////////////////////////////////
+        // Handle CreateFile errors
+        //////////////////////////////////////////////////
+
+        if(iRet == ERR_NO_INODES)
         {
-            ////////////////////////////////////////////////////
-            // creat filename permission
-            ////////////////////////////////////////////////////
+            printf("Error : Unable to create new file\n");
+            printf("Because there is no free inode\n");
+        }
 
-            if(strcmp(Command[0], "creat") == 0)
-            {
-                iRet = CreateFile(
-                            Command[1],
-                            atoi(Command[2])
-                        );
+        else if(iRet == ERR_INVALID_PARAMETER)
+        {
+            printf("Error : Unable to create new file\n");
+            printf("Because parameters of command are invalid\n");
+            printf("Please use man page to get actual parameters\n");
+        }
 
+        else if(iRet == ERR_FILE_ALREADY_EXIST)
+        {
+            printf("Error : Unable to create new file\n");
+            printf("Because the file name is already present\n");
+            printf("Please use ls command to check names of all files\n");
+        }
 
-                //////////////////////////////////////////////////
-                // Handle CreateFile errors
-                //////////////////////////////////////////////////
+        else if(iRet == ERR_MAX_FILES_OPEN)
+        {
+            printf("Error : Unable to create new file\n");
+            printf("Because the UFDT is full\n");
+            printf("Please close some opened file\n");
+        }
 
-                if(iRet == ERR_NO_INODES)
-                {
-                    printf("Error : Unable to create new file\n");
-                    printf("Because there is no free inode\n");
-                }
+        else if(iRet == ERR_INSUFFICIENT_SPACE)
+        {
+            printf("Error : Unable to create new file\n");
+            printf("Because memory allocation failed\n");
+        }
 
-                else if(iRet == ERR_INVALID_PARAMETER)
-                {
-                    printf("Error : Unable to create new file\n");
-                    printf("Because parameters of command are invalid\n");
-                    printf("Please use man page to get actual parameters\n");
-                }
+        else
+        {
+            printf(
+                "Files successfully created with FD : %d\n",
+                iRet
+            );
+        }
+    }
 
-                else if(iRet == ERR_FILE_ALREADY_EXIST)
-                {
-                    printf("Error : Unable to create new file\n");
-                    printf("Because the file name is already present\n");
-                    printf("Please use ls command to check names of all files\n");
-                }
+        ////////////////////////////////////////////////////
+        // open filename mode
+        ////////////////////////////////////////////////////
 
-                else if(iRet == ERR_MAX_FILES_OPEN)
-                {
-                    printf("Error : Unable to create new file\n");
-                    printf("Because the UFDT is full\n");
-                    printf("Please close some opened file\n");
-                }
-
-                else if(iRet == ERR_INSUFFICIENT_SPACE)
-                {
-                    printf("Error : Unable to create new file\n");
-                    printf("Because memory allocation failed\n");
-                }
-
-                else
-                {
-                    printf(
-                        "Files successfully created with FD : %d\n",
-                        iRet
+        else if(strcmp(Command[0], "open") == 0)
+        {
+            iRet = OpenFile(
+                        Command[1],
+                        atoi(Command[2])
                     );
-                }
+
+            if(iRet == ERR_INVALID_PARAMETER)
+            {
+                printf("Error : Invalid mode\n");
+                printf("Please use mode 1, 2 or 3\n");
             }
 
+            else if(iRet == ERR_FILE_NOT_EXIST)
+            {
+                printf("Error : File does not exist\n");
+            }
 
+            else if(iRet == ERR_PERMISSION_DENIED)
+            {
+                printf("Error : Permission denied\n");
+            }
+
+            else if(iRet == ERR_MAX_FILES_OPEN)
+            {
+                printf("Error : No free file descriptor available\n");
+            }
+
+            else if(iRet == ERR_INSUFFICIENT_SPACE)
+            {
+                printf("Error : Unable to allocate file table\n");
+            }
+
+            else
+            {
+                printf(
+                    "File successfully opened with FD : %d\n",
+                    iRet
+                );
+            }
+        }
             ////////////////////////////////////////////////////
             // read FD size
             ////////////////////////////////////////////////////
