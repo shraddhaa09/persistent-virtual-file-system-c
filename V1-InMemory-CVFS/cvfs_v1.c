@@ -303,6 +303,7 @@ void DisplayHelp()
     printf("read : It is used to read data from the file\n");
     printf("stat : It is used to display statistical information of file\n");
     printf("unlink : It is used to delete the file\n");
+    printf("lseek : It is used to change the current file offset\n");
     printf("exit : It is used to terminate Marvellous CVFS\n");
 
     printf("---------------------------------------------------\n");
@@ -377,6 +378,14 @@ void ManPageDisplay(char Name[])
         printf("Usage : stat file_name \n");
 
         printf("File_name: name of file whose information should be fetched\n");
+    }
+    else if(strcmp(Name, "lseek") == 0)
+    {
+        printf("About : It is used to change the current file offset\n");
+        printf("Usage : lseek FD offset whence\n");
+        printf("whence : START -> 0\n");
+        printf("whence : CURRENT -> 1\n");
+        printf("whence : END -> 2\n");
     }
     else
     {
@@ -663,6 +672,76 @@ int CloseFile(int fd)
     uareaobj.UFDT[fd] = NULL;
 
     return EXECUTE_SUCCESS;
+}
+//////////////////////////////////////////////////////////////////////
+//
+//  Function Name:      LseekFile
+//  Description:        It is used to change the current file offset
+//  Input :             File Descriptor, Offset and Position
+//  Output :             New Offset / Error code
+//
+//////////////////////////////////////////////////////////////////////
+
+int LseekFile(
+                int fd,
+                int offset,
+                int whence
+             )
+{
+    int newOffset = 0;
+
+    // Validate FD
+    if(fd < 0 || fd >= MAXOPENFILES)
+    {
+        return ERR_INVALID_PARAMETER;
+    }
+
+    // Check whether FD is open
+    if(uareaobj.UFDT[fd] == NULL)
+    {
+        return ERR_FILE_NOT_EXIST;
+    }
+
+    // Validate whence
+    if(whence != START &&
+       whence != CURRENT &&
+       whence != END)
+    {
+        return ERR_INVALID_PARAMETER;
+    }
+
+    // Calculate new offset
+    if(whence == START)
+    {
+        newOffset = offset;
+    }
+    else if(whence == CURRENT)
+    {
+        newOffset = uareaobj.UFDT[fd]->ReadOffset + offset;
+    }
+    else if(whence == END)
+    {
+        newOffset = uareaobj.UFDT[fd]->ptrinode->ActualFileSize
+                    + offset;
+    }
+
+    // Offset cannot be negative
+    if(newOffset < 0)
+    {
+        return ERR_INVALID_PARAMETER;
+    }
+
+    // Offset cannot exceed maximum file size
+    if(newOffset > uareaobj.UFDT[fd]->ptrinode->FileSize)
+    {
+        return ERR_INVALID_PARAMETER;
+    }
+
+    // Update both offsets
+    uareaobj.UFDT[fd]->ReadOffset = newOffset;
+    uareaobj.UFDT[fd]->WriteOffset = newOffset;
+
+    return newOffset;
 }
 
 ////////////////////////////////////////////////////////////////////
@@ -1513,10 +1592,39 @@ int main()
         //////////////////////////////////////////////////////
 
         else if(iCount == 4)
-        {
-            printf("Command not supported in V1\n");
-            printf("Please refer help option to get more information\n");
-        }
+            {
+                ////////////////////////////////////////////////////
+                // lseek FD offset whence
+                ////////////////////////////////////////////////////
+
+                if(strcmp(Command[0], "lseek") == 0)
+                {
+                    iRet = LseekFile(
+                                atoi(Command[1]),
+                                atoi(Command[2]),
+                                atoi(Command[3])
+                            );
+
+                    if(iRet == ERR_INVALID_PARAMETER)
+                    {
+                        printf("Error : Invalid lseek parameters\n");
+                    }
+                    else if(iRet == ERR_FILE_NOT_EXIST)
+                    {
+                        printf("Error : File is not open\n");
+                    }
+                    else
+                    {
+                        printf("Current file offset : %d\n", iRet);
+                    }
+                }
+                else
+                {
+                    printf("Command not found\n");
+                    printf("Please refer help option to get more information\n");
+                }
+            }
+        
 
 
         //////////////////////////////////////////////////////
