@@ -305,6 +305,7 @@ void DisplayHelp()
     printf("unlink : It is used to delete the file\n");
     printf("lseek : It is used to change the current file offset\n");
     printf("truncate : It is used to reduce the size of an existing file\n");
+    printf("fstat : It is used to display information of an opened file\n");
     printf("exit : It is used to terminate Marvellous CVFS\n");
 
     printf("---------------------------------------------------\n");
@@ -379,6 +380,12 @@ void ManPageDisplay(char Name[])
         printf("Usage : stat file_name \n");
 
         printf("File_name: name of file whose information should be fetched\n");
+    }
+    else if(strcmp(Name, "fstat") == 0)
+    {
+        printf("About : It is used to get information of an opened file\n");
+        printf("Usage : fstat FD\n");
+        printf("FD : File descriptor of opened file\n");
     }
     else if(strcmp(Name, "lseek") == 0)
     {
@@ -961,6 +968,86 @@ int stat_file(char name[]){
 
 
 }
+//////////////////////////////////////////////////////////////////////
+//
+//  Function Name:      FstatFile
+//  Description:        It is used to display statistical information
+//                      of an opened file using file descriptor
+//  Input :             File Descriptor
+//  Output :            Success / Error code
+//
+//////////////////////////////////////////////////////////////////////
+
+int FstatFile(int fd)
+{
+    PINODE temp = NULL;
+
+    // Validate FD
+    if(fd < 0 || fd >= MAXOPENFILES)
+    {
+        return ERR_INVALID_PARAMETER;
+    }
+
+    // Check whether FD is open
+    if(uareaobj.UFDT[fd] == NULL)
+    {
+        return ERR_FILE_NOT_EXIST;
+    }
+
+    // Get inode through FileTable
+    temp = uareaobj.UFDT[fd]->ptrinode;
+
+    printf("---------------------------------------------------\n");
+    printf("------ Statistical information of file ------\n");
+    printf("---------------------------------------------------\n");
+
+    printf("File name : %s\n", temp->FileName);
+
+    printf("Inode number : %d\n", temp->InodeNumber);
+
+    printf("File size : %d\n", temp->FileSize);
+
+    printf("Actual file size : %d\n", temp->ActualFileSize);
+
+    printf("Reference count : %d\n", temp->ReferenceCount);
+
+    printf("File descriptor : %d\n", fd);
+
+    printf("Read offset : %d\n",
+           uareaobj.UFDT[fd]->ReadOffset);
+
+    printf("Write offset : %d\n",
+           uareaobj.UFDT[fd]->WriteOffset);
+
+    printf("Mode : %d\n",
+           uareaobj.UFDT[fd]->Mode);
+
+    if(temp->Permission == READ)
+    {
+        printf("File permission : Read\n");
+    }
+    else if(temp->Permission == WRITE)
+    {
+        printf("File permission : Write\n");
+    }
+    else if(temp->Permission == (READ + WRITE))
+    {
+        printf("File permission : Read+Write\n");
+    }
+
+    if(temp->FileType == REGULARFILE)
+    {
+        printf("File type : Regular File\n");
+    }
+    else if(temp->FileType == SPECIALFILE)
+    {
+        printf("File type : Special File\n");
+    }
+
+    printf("---------------------------------------------------\n");
+
+    return EXECUTE_SUCCESS;
+}
 ////////////////////////////////////////////////////////////////////
 //
 //  Function Name:      unlink_file()
@@ -1343,6 +1430,19 @@ int main()
                 if(iRet == ERR_FILE_NOT_EXIST)
                 {
                     printf("Error : File does not exist\n");
+                }
+            }
+            else if(strcmp(Command[0], "fstat") == 0)
+            {
+                iRet = FstatFile(atoi(Command[1]));
+
+                if(iRet == ERR_INVALID_PARAMETER)
+                {
+                    printf("Error : Invalid file descriptor\n");
+                }
+                else if(iRet == ERR_FILE_NOT_EXIST)
+                {
+                    printf("Error : File is not open\n");
                 }
             }
 
